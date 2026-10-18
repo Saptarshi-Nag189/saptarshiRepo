@@ -1,0 +1,61 @@
+name: APK Guard
+
+on:
+  push:
+    paths: ["ApkGuard/**", ".github/workflows/apkguard.yml"]
+  pull_request:
+    paths: ["ApkGuard/**", ".github/workflows/apkguard.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ApkGuard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/wrapper-validation@v4
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests (scanner core)
+        run: ./gradlew :core:test
+
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.APKGUARD_KEYSTORE_BASE64 }}
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "APKGUARD_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        env:
+          APKGUARD_KEYSTORE_PASSWORD: ${{ secrets.APKGUARD_KEYSTORE_PASSWORD }}
+          APKGUARD_KEY_ALIAS: ${{ secrets.APKGUARD_KEY_ALIAS }}
+          APKGUARD_KEY_PASSWORD: ${{ secrets.APKGUARD_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease
+
+      - name: Verify no network permission in final APK
+        run: |
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          "$AAPT2" dump permissions "$APK" | tee perms.txt
+          if grep -q "android.permission.INTERNET" perms.txt; then echo "INTERNET permission present!"; exit 1; fi
+          sha256sum "$APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apkguard-release
+          path: ApkGuard/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
