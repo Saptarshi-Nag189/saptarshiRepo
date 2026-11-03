@@ -5,6 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Single source of truth for the version: the VERSION file (CI checks it matches the git tag).
+val appVersion = rootProject.file("VERSION").readText().trim()
+require(Regex("""\d+\.\d+\.\d+""").matches(appVersion)) { "VERSION must be MAJOR.MINOR.PATCH, got '$appVersion'" }
+val (vMajor, vMinor, vPatch) = appVersion.split('.').map { it.toInt() }
+
 android {
     namespace = "com.apkguard.app"
     compileSdk = 35
@@ -13,8 +18,8 @@ android {
         applicationId = "com.apkguard.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = vMajor * 10000 + vMinor * 100 + vPatch
+        versionName = appVersion
     }
 
     // Release signing comes from environment variables so no key is ever committed.

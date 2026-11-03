@@ -58,6 +58,20 @@ cd ApkGuard
 
 Optional real-APK test: `APKGUARD_SAMPLE_APK=/path/app.apk ./gradlew :core:test`.
 
+### Releases
+
+Download the latest signed APK from the repo's **Releases** page. Each release lists the
+APK's SHA-256 and the signing certificate fingerprint so you can verify it.
+
+To publish a new release:
+
+1. Bump `ApkGuard/VERSION` (e.g. `1.1.0`) and add a `## [1.1.0]` section to `CHANGELOG.md`.
+2. Commit, then tag and push: `git tag v1.1.0 && git push origin v1.1.0`.
+3. The **APK Guard Release** workflow tests, builds, verifies and publishes the release.
+   It fails if the tag and `VERSION` disagree.
+
+`versionCode` is derived as `MAJOR*10000 + MINOR*100 + PATCH`, so it always increases.
+
 ### Get the APK from GitHub Actions
 
 Every push builds the app. Open **Actions -> APK Guard -> latest run -> Artifacts -> apkguard-release**.

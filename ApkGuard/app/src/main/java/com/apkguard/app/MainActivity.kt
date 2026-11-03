@@ -203,6 +203,11 @@ class MainActivity : Activity() {
             setTextColor(textPrimary)
         })
         root.addView(TextView(this).apply {
+            text = "v${appVersion()}"
+            textSize = 12f
+            setTextColor(textSecondary)
+        })
+        root.addView(TextView(this).apply {
             text = "Offline APK risk scanner. Files never leave your phone and are never installed."
             setTextColor(textSecondary)
             setPadding(0, dp(4), 0, dp(12))
@@ -379,6 +384,14 @@ class MainActivity : Activity() {
             }
         }
     }
+
+    private fun appVersion(): String = runCatching {
+        if (Build.VERSION.SDK_INT >= 33) {
+            packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0)).versionName
+        } else {
+            @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionName
+        }
+    }.getOrNull() ?: "?"
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 

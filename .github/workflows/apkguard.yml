@@ -2,6 +2,7 @@ name: APK Guard
 
 on:
   push:
+    branches: ["**"]
     paths: ["ApkGuard/**", ".github/workflows/apkguard.yml"]
   pull_request:
     paths: ["ApkGuard/**", ".github/workflows/apkguard.yml"]
