@@ -81,8 +81,9 @@ To publish a new release:
 
 1. Bump `ApkGuard/VERSION` (e.g. `1.2.0`) and add a `## [1.2.0]` section to `CHANGELOG.md`.
 2. Commit and push. The **APK Guard Release** workflow sees the new version, runs the tests,
-   builds and verifies the APK, creates the `v1.2.0` tag and publishes the release.
-   A version that is already released is skipped. Pushing a `vX.Y.Z` tag by hand also works.
+   builds and verifies the APK, creates the `apkguard-v1.2.0` tag and publishes the release.
+   A version that is already released is skipped. Pushing an `apkguard-vX.Y.Z` tag by hand also works.
+   Tags carry the `apkguard-` prefix because this repository releases other projects too.
 
 `versionCode` is derived as `MAJOR*10000 + MINOR*100 + PATCH`, so it always increases.
 

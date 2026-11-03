@@ -1,12 +1,12 @@
 name: APK Guard Release
 
-# Publishes a GitHub Release when ApkGuard/VERSION changes (or a vX.Y.Z tag is pushed).
+# Publishes a GitHub Release when ApkGuard/VERSION changes (or an apkguard-vX.Y.Z tag is pushed).
 # The workflow creates the tag itself, so nobody has to push tags by hand.
 on:
   push:
     branches: ["**"]
     paths: ["ApkGuard/VERSION", ".github/workflows/apkguard-release.yml"]
-    tags: ["v*.*.*"]
+    tags: ["apkguard-v*.*.*"]
   workflow_dispatch:
 
 permissions:
@@ -27,11 +27,14 @@ jobs:
         run: |
           FILE="$(tr -d '[:space:]' < VERSION)"
           echo "VERSION=$FILE" >> "$GITHUB_ENV"
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$FILE" ]; then
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#apkguard-v}" != "$FILE" ]; then
             echo "Tag $GITHUB_REF_NAME does not match VERSION $FILE"; exit 1
           fi
-          if gh release view "v$FILE" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "v$FILE is already released; nothing to do."
+          # Tags are namespaced (apkguard-vX.Y.Z) because this repo releases several projects.
+          # 1.1.0 and 1.1.1 went out as plain vX.Y.Z before that; don't publish them twice.
+          if gh release view "apkguard-v$FILE" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+             gh release view "v$FILE" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "APK Guard $FILE is already released; nothing to do."
             echo "SKIP=1" >> "$GITHUB_ENV"
           fi
 
@@ -127,7 +130,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v$VERSION" dist/ApkGuard-v$VERSION.apk dist/SHA256SUMS.txt \
+          gh release create "apkguard-v$VERSION" dist/ApkGuard-v$VERSION.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --title "APK Guard v$VERSION" \
             --notes-file notes.md \
