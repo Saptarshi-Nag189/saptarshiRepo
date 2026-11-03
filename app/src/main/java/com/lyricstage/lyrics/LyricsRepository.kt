@@ -64,7 +64,7 @@ class LyricsRepository(
 
     /** Bind a user-picked .lrc (or plain text) to [track]. Returns false if it is empty. */
     suspend fun import(track: TrackQuery, raw: String): Boolean {
-        val text = raw.removePrefix("﻿").trim()
+        val text = raw.removePrefix(BOM).trim()
         if (text.isEmpty()) return false
         dao.upsert(entity(track, text, LrcParser.isSynced(text), instrumental = false, source = SOURCE_IMPORT))
         return true
@@ -81,6 +81,7 @@ class LyricsRepository(
 
     companion object {
         const val RETRY_MS = 60_000L
+        private val BOM = Char(0xFEFF).toString()
         const val SOURCE_LRCLIB = "lrclib"
         const val SOURCE_IMPORT = "import"
 

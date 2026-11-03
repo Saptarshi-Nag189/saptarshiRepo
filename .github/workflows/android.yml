@@ -27,7 +27,6 @@ jobs:
 
       - name: Lint
         run: ./gradlew :app:lintDebug
-        continue-on-error: true
 
       - name: Print lint report
         if: always()

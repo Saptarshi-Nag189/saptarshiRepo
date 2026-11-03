@@ -18,7 +18,6 @@
     <string name="state_unavailable">Can\'t reach the lyrics service</string>
     <string name="state_unavailable_hint">Will try again in a minute.</string>
     <string name="state_instrumental">Instrumental</string>
-    <string name="state_paused">Paused</string>
     <string name="plain_badge">Unsynced lyrics, auto-scrolling</string>
     <string name="import_lrc">Import .lrc</string>
     <string name="import_done">Lyrics imported for this track</string>
@@ -62,6 +61,6 @@
     <string name="debug_smoothed">Smoothed</string>
     <string name="debug_shown">Shown (with offset)</string>
     <string name="fitcheck_running">Checking every line in every template…</string>
-    <string name="fitcheck_summary">%1$d layouts checked, %2$d failures</string>
+    <string name="fitcheck_summary">Layouts checked: %1$d. Failures: %2$d.</string>
     <string name="fitcheck_ok">Every word fits.</string>
 </resources>

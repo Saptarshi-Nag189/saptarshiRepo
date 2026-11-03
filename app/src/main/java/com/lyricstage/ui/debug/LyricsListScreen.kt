@@ -10,7 +10,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -30,9 +32,10 @@ fun LyricsListScreen(vm: StageViewModel, onBack: () -> Unit) {
     val state by vm.lyrics.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val ready = state as? LyricsState.Ready
-    val current by produceState(-1, ready) {
+    var current by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(ready) {
         while (true) {
-            value = ready?.lyrics?.lastStartedLine(vm.clock.currentPositionMs()) ?: -1
+            current = ready?.lyrics?.lastStartedLine(vm.clock.currentPositionMs()) ?: -1
             delay(100)
         }
     }

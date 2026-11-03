@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -144,8 +145,9 @@ private fun Preview(songs: List<Song>, density: Density, resolver: FontFamily.Re
         val (w, h) = if (landscape) 891f to 411f else 411f to 891f
         SizeF(w.dp.toPx(), h.dp.toPx())
     }
-    val preps by produceState<List<PreparedStage>>(emptyList(), song, stage) {
-        value = withContext(Dispatchers.Default) {
+    var preps by remember { mutableStateOf<List<PreparedStage>>(emptyList()) }
+    LaunchedEffect(song, stage) {
+        preps = withContext(Dispatchers.Default) {
             val m = TextMeasurer(resolver, density, LayoutDirection.Ltr, 0)
             TemplateId.entries.map { PreparedStage.prepare(song.lyrics, stage, m, density, 7, it, false, 1f) }
         }
