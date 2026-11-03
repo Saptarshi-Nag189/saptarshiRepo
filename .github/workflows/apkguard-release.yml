@@ -1,9 +1,13 @@
 name: APK Guard Release
 
-# Push a tag like v1.0.0 to build, sign and publish a GitHub Release.
+# Publishes a GitHub Release when ApkGuard/VERSION changes (or a vX.Y.Z tag is pushed).
+# The workflow creates the tag itself, so nobody has to push tags by hand.
 on:
   push:
+    branches: ["**"]
+    paths: ["ApkGuard/VERSION"]
     tags: ["v*.*.*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,29 +21,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check tag matches VERSION file
+      - name: Read version and skip if already released
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
           FILE="$(tr -d '[:space:]' < VERSION)"
-          echo "tag=$TAG version=$FILE"
-          [ "$TAG" = "$FILE" ] || { echo "Tag v$TAG does not match VERSION $FILE"; exit 1; }
           echo "VERSION=$FILE" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$FILE" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match VERSION $FILE"; exit 1
+          fi
+          if gh release view "v$FILE" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$FILE is already released; nothing to do."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
 
       - uses: actions/setup-java@v4
+        if: env.SKIP != '1'
         with:
           distribution: temurin
           java-version: "17"
 
       - uses: gradle/actions/wrapper-validation@v4
+        if: env.SKIP != '1'
 
       - uses: gradle/actions/setup-gradle@v4
+        if: env.SKIP != '1'
         with:
           cache-disabled: true
 
       - name: Unit tests
+        if: env.SKIP != '1'
         run: ./gradlew :core:test
 
       - name: Decode release keystore
+        if: env.SKIP != '1'
         env:
           KEYSTORE_BASE64: ${{ secrets.APKGUARD_KEYSTORE_BASE64 }}
         run: |
@@ -53,6 +68,7 @@ jobs:
           fi
 
       - name: Build release APK
+        if: env.SKIP != '1'
         env:
           APKGUARD_KEYSTORE_PASSWORD: ${{ secrets.APKGUARD_KEYSTORE_PASSWORD }}
           APKGUARD_KEY_ALIAS: ${{ secrets.APKGUARD_KEY_ALIAS }}
@@ -60,6 +76,7 @@ jobs:
         run: ./gradlew :app:assembleRelease
 
       - name: Verify APK
+        if: env.SKIP != '1'
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           SRC=$(ls app/build/outputs/apk/release/*.apk | head -1)
@@ -76,6 +93,7 @@ jobs:
           (cd dist && sha256sum "ApkGuard-v$VERSION.apk" > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: Write release notes
+        if: env.SKIP != '1'
         run: |
           # Section of CHANGELOG.md for this version (between its heading and the next one).
           awk -v v="$VERSION" '
@@ -101,6 +119,7 @@ jobs:
           cat notes.md
 
       - name: Publish GitHub Release
+        if: env.SKIP != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -108,4 +127,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "APK Guard v$VERSION" \
             --notes-file notes.md \
-            --verify-tag
+            --target "$GITHUB_SHA"

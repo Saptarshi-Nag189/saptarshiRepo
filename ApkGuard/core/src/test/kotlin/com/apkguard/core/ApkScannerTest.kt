@@ -275,16 +275,66 @@ class ApkScannerTest {
         assertEquals(listOf("gzip", "dist/bundle.zip", "app.apk"), chain)
     }
 
+    /** Builds a RAR 4 archive with stored (uncompressed) entries. */
+    private fun rar4(entries: List<Pair<String, ByteArray>>): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        fun le(n: Int, v: Long) = ByteArray(n) { ((v ushr (8 * it)) and 0xFF).toByte() }
+        fun block(body: ByteArray) {
+            val crc = java.util.zip.CRC32().apply { update(body) }.value and 0xFFFF
+            out.write(le(2, crc)); out.write(body)
+        }
+        out.write(byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00))
+        block(byteArrayOf(0x73) + le(2, 0) + le(2, 13) + le(2, 0) + le(4, 0))
+        for ((name, data) in entries) {
+            val n = name.toByteArray()
+            val crc = java.util.zip.CRC32().apply { update(data) }.value
+            block(byteArrayOf(0x74) + le(2, 0x8000) + le(2, 32L + n.size) + le(4, data.size.toLong()) + le(4, data.size.toLong()) +
+                byteArrayOf(3) + le(4, crc) + le(4, 0x5A000000) + byteArrayOf(20, 0x30) + le(2, n.size.toLong()) + le(4, 0x20) + n)
+            out.write(data)
+        }
+        block(byteArrayOf(0x7B) + le(2, 0x4000) + le(2, 7))
+        return out.toByteArray()
+    }
+
     @Test
-    fun rarIsReportedAsUnsupported() {
+    fun scansApkInsideRar() {
+        val f = File(tmp, "w.rar")
+        f.writeBytes(rar4(listOf("readme.txt" to "hi".toByteArray(), "dist/app.apk" to innerApk())))
+        val r = ApkScanner().scan(f)
+        assertScannedInner(r)
+        assertEquals(listOf("dist/app.apk"), r.findings.first { it.title == "Scanned the APK inside this archive" }.evidence)
+    }
+
+    @Test
+    fun rar5IsReportedAsUnsupported() {
         val f = File(tmp, "x.rar")
         f.writeBytes(byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00) + ByteArray(100))
         try {
             ApkScanner().scan(f)
-            fail("expected UnsupportedArchiveException")
+            fail("expected an error")
         } catch (e: Containers.UnsupportedArchiveException) {
-            assertEquals("RAR", e.format)
+            assertEquals("RAR5", e.format)
+        } catch (e: ZipFormatException) {
+            // also acceptable: junrar may reject a truncated v5 header as damaged
         }
+    }
+
+    @Test
+    fun exportsEscapeHostileText() {
+        val evil = "<script>alert(1)</script>\"\n\u0001"
+        val r = Report(
+            ApkInfo(evil, "1", "1", 24, 34, 10, 1, 1, emptyList(), listOf("p"), null, emptyList()),
+            listOf(Finding(Severity.HIGH, "Code", evil, evil, listOf(evil))),
+        )
+        val m = ReportExport.Meta(evil, "ab", "2026-11-03 10:00", "1.1.0")
+        val html = ReportExport.html(r, m, evidence = true)
+        assertFalse(html.contains("<script>"), "unescaped script in HTML")
+        assertTrue(html.contains("&lt;script&gt;"))
+        val json = ReportExport.json(r, m, evidence = true)
+        assertFalse(json.contains("\u0001"[0]))
+        assertTrue(json.contains("\\\"\\n\\u0001"), json)
+        assertFalse(ReportExport.text(r, m, evidence = false).contains("  - "))
+        assertFalse(ReportExport.json(r, m, evidence = false).contains("\"evidence\""))
     }
 
     @Test

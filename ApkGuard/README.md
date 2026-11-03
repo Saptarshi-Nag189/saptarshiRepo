@@ -19,10 +19,23 @@ before you install it. Everything runs on the phone. Nothing is uploaded.
 
 It also shows the SHA-256 of the file so you can look it up yourself.
 
+**Archives:** if you pick a .zip, .xapk, .apks, .apkm, .rar (v4), .gz, .tar or .tar.gz, APK Guard
+finds the APK inside and scans that. RAR5 files are detected and you're asked to extract first.
+
+**Live check:** lists downloaded apps that currently hold Accessibility, device admin, notification
+access, draw-over-apps, usage access, default SMS or unrestricted battery, where each came from,
+and what changed since the last check. It reads Android's settings; it can't see inside an app.
+
+**Export:** save or share a report as PDF, HTML, JSON or plain text. HTML reports carry a strict
+Content-Security-Policy and escape everything taken from the scanned APK.
+
 ## Security design
 
 - **No INTERNET permission.** Stripped in the manifest; CI fails the build if it ever appears.
-- **Zero third-party dependencies.** Only the Kotlin standard library and the Android framework.
+- **One third-party library.** junrar 8.1.2 reads RAR files; everything else is Kotlin and the
+  Android framework. junrar never gets a file path from the archive: extracted data goes to a
+  random temp name with a size cap. Note junrar's UnRar license restricts using its code to build
+  a RAR compressor.
 - **APK is never installed, loaded or executed.** It is parsed as raw bytes by a custom,
   bounds-checked ZIP / binary-XML / DEX reader. Android's `PackageManager` is used only to verify
   the signature.
@@ -34,8 +47,9 @@ It also shows the SHA-256 of the file so you can look it up yourself.
 - **Only `content://` input.** `file://` URIs are rejected.
 - Release builds are minified with R8 and strip logging.
 
-`QUERY_ALL_PACKAGES` is requested only to compare the scanned APK's signer with an
-installed app of the same name. With no network access, that list cannot leave the phone.
+`QUERY_ALL_PACKAGES` is used to compare a scanned APK's signer with an installed app of the same
+name (spots fake copies) and to list apps for Live check. With no network access, that list cannot
+leave the phone.
 
 ## Use
 
@@ -65,10 +79,10 @@ APK's SHA-256 and the signing certificate fingerprint so you can verify it.
 
 To publish a new release:
 
-1. Bump `ApkGuard/VERSION` (e.g. `1.1.0`) and add a `## [1.1.0]` section to `CHANGELOG.md`.
-2. Commit, then tag and push: `git tag v1.1.0 && git push origin v1.1.0`.
-3. The **APK Guard Release** workflow tests, builds, verifies and publishes the release.
-   It fails if the tag and `VERSION` disagree.
+1. Bump `ApkGuard/VERSION` (e.g. `1.2.0`) and add a `## [1.2.0]` section to `CHANGELOG.md`.
+2. Commit and push. The **APK Guard Release** workflow sees the new version, runs the tests,
+   builds and verifies the APK, creates the `v1.2.0` tag and publishes the release.
+   A version that is already released is skipped. Pushing a `vX.Y.Z` tag by hand also works.
 
 `versionCode` is derived as `MAJOR*10000 + MINOR*100 + PATCH`, so it always increases.
 
@@ -90,4 +104,4 @@ and add repo secrets `APKGUARD_KEYSTORE_BASE64`, `APKGUARD_KEYSTORE_PASSWORD`,
 ## Layout
 
 - `core/` pure Kotlin scanner (ZIP, binary XML, DEX, signing block, rules, scoring). JVM-testable.
-- `app/` Android UI and PackageManager signature check.
+- `app/` Android UI, Live check, report export and the PackageManager signature check.

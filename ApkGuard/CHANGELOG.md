@@ -2,9 +2,34 @@
 
 All notable changes to APK Guard. Versions follow [Semantic Versioning](https://semver.org).
 
-## [1.0.0] - 2026-11-03
+## [1.1.0] - 2026-11-03
 
-First public release.
+First published release.
+
+### New
+- Live check: lists downloaded apps that hold Accessibility, device admin, notification access,
+  draw-over-apps, usage access, default SMS or unrestricted battery. Shows where each app was
+  installed from, whether its icon is hidden, and what changed since the last check. Buttons open
+  the right system screen to turn a power off.
+- Scans the APK inside .zip, .xapk, .apks, .apkm, .rar (v4), .gz, .tar and .tar.gz files,
+  including archives inside archives. Split bundles use base.apk.
+- Export a report as PDF, web page, JSON or plain text. Save it with the system file picker or share it.
+- History of past scans (summaries only).
+- New dark interface with a bottom bar, large risk score and action tiles. Edge-to-edge layout that
+  keeps buttons clear of the status bar, camera cutout and gesture bar.
+- Scan an installed app's own APK from Live check.
+
+### Fixed
+- APK Guard no longer flags itself. Code rules now match functions the app actually calls, not
+  text that only mentions them.
+- Picking the GitHub download ZIP scanned the wrapper instead of the app inside.
+
+### Dependencies
+- Added junrar 8.1.2 for RAR files (UnRar license) and the Manrope font (SIL Open Font License 1.1).
+
+## [1.0.0] - 2026-10-18
+
+Initial build. Never published as a release.
 
 ### Features
 - Offline APK scanner: pick a file, or use "Open with" / "Share" from a file manager or browser.

@@ -14,6 +14,8 @@ kotlin {
 }
 
 dependencies {
+    // RAR (v4) extraction. The only third-party library in APK Guard; see README "Dependencies".
+    implementation("com.github.junrar:junrar:8.1.2")
     testImplementation(kotlin("test"))
 }
 

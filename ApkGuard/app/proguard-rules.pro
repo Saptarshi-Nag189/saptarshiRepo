@@ -7,3 +7,7 @@
     public static *** w(...);
     public static *** e(...);
 }
+
+# junrar logs through slf4j; with no binding on Android it is a no-op.
+-dontwarn org.slf4j.**
+-dontwarn com.github.junrar.**

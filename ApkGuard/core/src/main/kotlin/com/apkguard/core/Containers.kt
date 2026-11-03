@@ -9,7 +9,7 @@ import java.util.zip.GZIPInputStream
 
 /**
  * Finds the APK inside whatever the user picked: a plain APK, or an APK wrapped in
- * ZIP / XAPK / APKS / APKM, GZIP, TAR or TAR.GZ, nested up to [MAX_DEPTH] levels.
+ * ZIP / XAPK / APKS / APKM, RAR (v4), GZIP, TAR or TAR.GZ, nested up to [MAX_DEPTH] levels.
  * Extracted files get random names in [workDir]; entry names are never used as paths.
  */
 object Containers {
@@ -18,7 +18,8 @@ object Containers {
     class Unwrapped(val apk: File, val chain: List<String>, val otherApks: List<String>)
 
     class UnsupportedArchiveException(val format: String) :
-        Exception("$format archives are not supported yet. Extract the APK with a file manager, then scan it.")
+        Exception(if (format == "RAR5") "This RAR uses the newer RAR5 format, which APK Guard can't open yet. Extract the APK with a file manager, then scan it."
+            else "$format archives are not supported yet. Extract the APK with a file manager, then scan it.")
 
     enum class Kind { ZIP, GZIP, TAR, RAR, SEVEN_Z, UNKNOWN }
 
@@ -48,7 +49,13 @@ object Containers {
         repeat(MAX_DEPTH + 1) {
             if (isCancelled()) throw ApkScanner.CancelledException()
             when (sniff(current)) {
-                Kind.RAR -> throw UnsupportedArchiveException("RAR")
+                Kind.RAR -> {
+                    val (name, out, rest) = extractFromRar(current, workDir, maxBytes, temps)
+                        ?: return Unwrapped(current, chain, others)
+                    chain += name
+                    others = rest
+                    current = out
+                }
                 Kind.SEVEN_Z -> throw UnsupportedArchiveException("7z")
                 Kind.GZIP -> {
                     val out = newTemp(workDir, temps)
@@ -84,7 +91,7 @@ object Containers {
 
     private fun isCandidate(name: String): Boolean {
         val n = name.lowercase()
-        return listOf(".apk", ".zip", ".xapk", ".apks", ".apkm", ".gz", ".tgz", ".tar").any { n.endsWith(it) }
+        return listOf(".apk", ".zip", ".xapk", ".apks", ".apkm", ".gz", ".tgz", ".tar", ".rar").any { n.endsWith(it) }
     }
 
     /** Prefer the base APK of a split bundle, then any APK, then nested archives; largest first. */
@@ -92,6 +99,49 @@ object Containers {
         val apks = items.filter { it.first.endsWith(".apk", true) }
         apks.firstOrNull { it.first.substringAfterLast('/').equals("base.apk", true) }?.let { return it.first }
         return (apks.ifEmpty { items }).maxByOrNull { it.second }?.first
+    }
+
+    private fun extractFromRar(file: File, workDir: File, maxBytes: Long, temps: MutableList<File>): Triple<String, File, List<String>>? {
+        // RAR5 signature is "Rar!\u001A\u0007\u0001\u0000"; junrar only reads RAR 1.5 to 4.x.
+        val sig = ByteArray(8)
+        RandomAccessFile(file, "r").use { it.read(sig) }
+        if (sig[6] == 1.toByte()) throw UnsupportedArchiveException("RAR5")
+        val archive = try {
+            com.github.junrar.Archive(file)
+        } catch (e: com.github.junrar.exception.UnsupportedRarVersionException) {
+            throw UnsupportedArchiveException("RAR5")
+        } catch (e: com.github.junrar.exception.UnsupportedRarEncryptedException) {
+            throw ZipFormatException("This RAR archive is password protected")
+        } catch (e: Exception) {
+            throw ZipFormatException("Damaged or encrypted RAR archive")
+        }
+        archive.use { rar ->
+            if (rar.isEncrypted) throw ZipFormatException("This RAR archive is password protected")
+            val headers = rar.fileHeaders.filter { !it.isDirectory && isCandidate(it.fileName.replace('\\', '/')) }
+            val best = pick(headers.map { it.fileName.replace('\\', '/') to it.fullUnpackSize }) ?: return null
+            val header = headers.first { it.fileName.replace('\\', '/') == best }
+            val out = newTemp(workDir, temps)
+            try {
+                out.outputStream().buffered().use { rar.extractFile(header, CappedOutput(it, maxBytes)) }
+            } catch (e: ZipFormatException) {
+                throw e
+            } catch (e: Exception) {
+                throw ZipFormatException("Could not extract $best from the RAR archive")
+            }
+            return Triple(best, out, headers.map { it.fileName.replace('\\', '/') }.filter { it != best && it.endsWith(".apk", true) })
+        }
+    }
+
+    /** Throws once more than [max] bytes are written, so a RAR bomb cannot fill the disk. */
+    private class CappedOutput(private val out: OutputStream, private val max: Long) : OutputStream() {
+        private var n = 0L
+        override fun write(b: Int) { bump(1); out.write(b) }
+        override fun write(b: ByteArray, off: Int, len: Int) { bump(len.toLong()); out.write(b, off, len) }
+        private fun bump(k: Long) {
+            n += k
+            if (n > max) throw ZipFormatException("Archive expands past ${max / 1048576} MiB; refusing (zip bomb protection)")
+        }
+        override fun flush() = out.flush()
     }
 
     private fun extractFromTar(file: File, workDir: File, maxBytes: Long, temps: MutableList<File>): Triple<String, File, List<String>>? {
