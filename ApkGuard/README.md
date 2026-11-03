@@ -101,6 +101,23 @@ base64 -w0 release.jks
 and add repo secrets `APKGUARD_KEYSTORE_BASE64`, `APKGUARD_KEYSTORE_PASSWORD`,
 `APKGUARD_KEY_ALIAS`, `APKGUARD_KEY_PASSWORD`. Never commit the keystore.
 
+## Desktop second opinion with REA
+
+`tools/rea-check.sh` runs [REA](https://github.com/morluto/rea) on a computer as an extra check.
+It uses REA's static readers only, so the APK is never installed or run.
+
+```sh
+tools/rea-check.sh path/to/app.apk rea-report/
+```
+
+- Always: full signing-block report (schemes, signer certificate, digest self-check, key rotation)
+  and Flutter build detection.
+- With a full JDK and `REA_JADX_MCP_JAR` pointing at
+  [jadx-headless-mcp 0.7.1](https://github.com/1013503897/jadx-headless-mcp/releases/tag/v0.7.1):
+  decoded manifest and a search for SMS, Accessibility, device admin and dynamic-loading classes.
+
+Needs Node.js 22.23.4+ or 24.22.1+. REA does not run on the phone.
+
 ## Layout
 
 - `core/` pure Kotlin scanner (ZIP, binary XML, DEX, signing block, rules, scoring). JVM-testable.
