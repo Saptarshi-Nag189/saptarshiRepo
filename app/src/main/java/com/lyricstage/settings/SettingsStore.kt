@@ -2,6 +2,7 @@ package com.lyricstage.settings
 
 import android.content.Context
 import android.provider.Settings as SystemSettings
+import androidx.core.content.edit
 import com.lyricstage.core.stage.TemplateId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,14 +29,14 @@ class SettingsStore(private val context: Context) {
 
     fun update(transform: (StageSettings) -> StageSettings) {
         val next = transform(_settings.value)
-        prefs.edit()
-            .putString(K_TEMPLATE, next.template?.name)
-            .putString(K_BACKGROUND, next.background.name)
-            .putFloat(K_FONT, next.fontScale)
-            .putFloat(K_HIGHLIGHT, next.highlightIntensity)
-            .putBoolean(K_REDUCE, next.reduceMotion)
-            .putBoolean(K_FPS, next.showFps)
-            .apply()
+        prefs.edit {
+            putString(K_TEMPLATE, next.template?.name)
+            putString(K_BACKGROUND, next.background.name)
+            putFloat(K_FONT, next.fontScale)
+            putFloat(K_HIGHLIGHT, next.highlightIntensity)
+            putBoolean(K_REDUCE, next.reduceMotion)
+            putBoolean(K_FPS, next.showFps)
+        }
         _settings.value = next
     }
 

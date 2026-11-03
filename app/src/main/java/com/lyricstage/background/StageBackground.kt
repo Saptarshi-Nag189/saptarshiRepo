@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
+import androidx.core.graphics.scale
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.lyricstage.core.palette.Colour
@@ -147,7 +148,7 @@ private fun GradientFallback(palette: StagePalette, clock: BackgroundClock) {
 private fun ArtworkBlur(art: Bitmap, palette: StagePalette) {
     val small = remember(art) {
         val readable = if (art.config == Bitmap.Config.HARDWARE) art.copy(Bitmap.Config.ARGB_8888, false) else art
-        Bitmap.createScaledBitmap(readable, 24, 24, true).asImageBitmap()
+        readable.scale(24, 24).asImageBitmap()
     }
     Canvas(
         Modifier
