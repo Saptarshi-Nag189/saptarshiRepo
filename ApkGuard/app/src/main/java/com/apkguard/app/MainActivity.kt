@@ -105,11 +105,26 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = Ui(this)
-        goEdgeToEdge()
-        buildShell()
-        cleanupStaleFiles()
-        showHome()
-        if (savedInstanceState == null) handleIncoming(intent)
+        val crash = CrashLog.pending(this)
+        if (crash != null) {
+            CrashLog.show(this, crash) { start(savedInstanceState) }
+            return
+        }
+        start(savedInstanceState)
+    }
+
+    private fun start(savedInstanceState: Bundle?) {
+        try {
+            goEdgeToEdge()
+            buildShell()
+            cleanupStaleFiles()
+            showHome()
+            if (savedInstanceState == null) handleIncoming(intent)
+        } catch (t: Throwable) {
+            // Show the error instead of a crash loop on launch.
+            CrashLog.save(this, t)
+            CrashLog.show(this, CrashLog.pending(this) ?: t.toString()) { recreate() }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

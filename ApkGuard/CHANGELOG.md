@@ -2,6 +2,14 @@
 
 All notable changes to APK Guard. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.1.1] - 2026-11-03
+
+### Fixed
+- If APK Guard crashes, the next launch shows the error with Copy and Share buttons instead of
+  closing. A crash while starting up shows the report right away. Nothing is sent automatically.
+- Releases are signed with one permanent key once the `APKGUARD_SIGNING` secret is set, so later
+  versions install as updates.
+
 ## [1.1.0] - 2026-11-03
 
 First published release.

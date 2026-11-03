@@ -12,6 +12,7 @@
         tools:ignore="QueryAllPackagesPermission" />
 
     <application
+        android:name=".ApkGuardApp"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
