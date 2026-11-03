@@ -29,6 +29,10 @@ jobs:
         run: ./gradlew :app:lintDebug
         continue-on-error: true
 
+      - name: Print lint report
+        if: always()
+        run: cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt || true
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
