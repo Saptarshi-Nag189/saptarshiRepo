@@ -32,19 +32,28 @@ jobs:
       - name: Unit tests (scanner core)
         run: ./gradlew :core:test
 
-      - name: Decode release keystore
+      - name: Decode release key
         env:
-          KEYSTORE_BASE64: ${{ secrets.APKGUARD_KEYSTORE_BASE64 }}
-        if: env.KEYSTORE_BASE64 != ''
+          SIGNING: ${{ secrets.APKGUARD_SIGNING }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          echo "APKGUARD_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          # One secret holds "password:base64-of-PKCS12-keystore" (alias "apkguard").
+          if [ -n "$SIGNING" ]; then
+            PW="${SIGNING%%:*}"
+            echo "::add-mask::$PW"
+            printf '%s' "${SIGNING#*:}" | base64 -d > "$RUNNER_TEMP/release.p12"
+            {
+              echo "APKGUARD_KEYSTORE=$RUNNER_TEMP/release.p12"
+              echo "APKGUARD_KEYSTORE_PASSWORD=$PW"
+              echo "APKGUARD_KEY_PASSWORD=$PW"
+              echo "APKGUARD_KEY_ALIAS=apkguard"
+              echo "SIGNING=release"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::No APKGUARD_SIGNING secret; signing with a throwaway debug key."
+            echo "SIGNING=debug" >> "$GITHUB_ENV"
+          fi
 
       - name: Build release APK
-        env:
-          APKGUARD_KEYSTORE_PASSWORD: ${{ secrets.APKGUARD_KEYSTORE_PASSWORD }}
-          APKGUARD_KEY_ALIAS: ${{ secrets.APKGUARD_KEY_ALIAS }}
-          APKGUARD_KEY_PASSWORD: ${{ secrets.APKGUARD_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease
 
       - name: Verify no network permission in final APK

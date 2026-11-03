@@ -90,16 +90,18 @@ To publish a new release:
 
 Every push builds the app. Open **Actions -> APK Guard -> latest run -> Artifacts -> apkguard-release**.
 
-Without signing secrets the release APK is signed with a throwaway debug key, so each new
-build must be uninstalled before installing. For stable updates, create a key once:
+Releases are signed with one permanent key so new versions install as updates. CI reads it from
+a single repository secret, `APKGUARD_SIGNING`, whose value is `password:base64-of-keystore`
+(PKCS12, alias `apkguard`). To make your own:
 
 ```sh
-keytool -genkeypair -v -keystore release.jks -alias apkguard -keyalg RSA -keysize 4096 -validity 10000
-base64 -w0 release.jks
+keytool -genkeypair -keystore release.p12 -storetype PKCS12 -alias apkguard \
+  -keyalg RSA -keysize 4096 -validity 10000 -storepass "$PW" -keypass "$PW" -dname "CN=APK Guard"
+printf '%s:%s' "$PW" "$(base64 -w0 release.p12)"   # paste this as APKGUARD_SIGNING
 ```
 
-and add repo secrets `APKGUARD_KEYSTORE_BASE64`, `APKGUARD_KEYSTORE_PASSWORD`,
-`APKGUARD_KEY_ALIAS`, `APKGUARD_KEY_PASSWORD`. Never commit the keystore.
+Keep a private backup of the keystore: if it is lost, users must uninstall to get new versions.
+Without the secret, builds fall back to a throwaway debug key. Never commit the keystore.
 
 ## Desktop second opinion with REA
 
