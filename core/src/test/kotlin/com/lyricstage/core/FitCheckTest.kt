@@ -25,13 +25,13 @@ class FitCheckTest {
             val lyrics = LyricsBuilder.fromLrc(Samples.read(name), 120_000)
             for (line in lyrics.lines) {
                 val measured = MeasuredLine.measure(line, Samples.measure)
-                for (t in Templates.all) for ((sizeName, size) in sizes) for (seed in listOf(1, 99, 12345)) {
-                    val layout = t.layout(measured, size, seed)
+                for (t in Templates.all) for ((sizeName, size) in sizes) for (seed in listOf(1, 99, 12345)) for (scale in listOf(0.6f, 1f, 1.4f)) {
+                    val layout = t.layout(measured, size, seed, scale)
                     checked++
                     val area = layout.safeArea
                     val outside = layout.words.filter { !area.contains(it.bounds()) }
                     if (!layout.fits || outside.isNotEmpty()) {
-                        failures += "$name/${t.id}/$sizeName/$seed: '${line.text}' words ${outside.map { it.index }}"
+                        failures += "$name/${t.id}/$sizeName/$seed/x$scale: '${line.text}' words ${outside.map { it.index }}"
                     }
                     if (layout.words.any { it.fontPx < FitEngine.minFont(size) * 0.6f }) tiny++
                 }

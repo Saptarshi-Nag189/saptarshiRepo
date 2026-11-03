@@ -79,7 +79,8 @@ interface LyricTemplate {
     }
 
     /** Fit [line] into [bounds]: shrink, then wrap, then rebalance. */
-    fun layout(line: MeasuredLine, bounds: SizeF, seed: Int): TemplateLayout = FitEngine.fit(this, line, bounds, seed)
+    fun layout(line: MeasuredLine, bounds: SizeF, seed: Int, fontScale: Float = 1f): TemplateLayout =
+        FitEngine.fit(this, line, bounds, seed, fontScale)
 }
 
 enum class Align { START, CENTRE, END }

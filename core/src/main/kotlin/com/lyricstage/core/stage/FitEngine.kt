@@ -32,15 +32,16 @@ object FitEngine {
     /** Smallest size we shrink to before wrapping again; legible at arm's length. */
     fun minFont(stage: SizeF): Float = max(stage.minDimension * 0.05f, 12f)
 
-    fun fit(template: LyricTemplate, line: MeasuredLine, stage: SizeF, seed: Int): TemplateLayout {
+    fun fit(template: LyricTemplate, line: MeasuredLine, stage: SizeF, seed: Int, fontScale: Float = 1f): TemplateLayout {
         val hasSub = !line.line.sub.isNullOrBlank()
         val area = safeArea(stage, hasSub)
         val subArea = if (hasSub) RectF(area.left, area.bottom + stage.height * 0.01f, area.right, area.bottom + stage.height * SUBTITLE_SHARE) else null
         if (line.words.isEmpty()) {
             return TemplateLayout(template.id, line.line, stage, Arrangement(emptyList()), area, true, seed, subArea)
         }
-        val maxF = maxFont(stage)
         val minF = minFont(stage)
+        // the user's font scale caps the size; it never pushes text past the safe area
+        val maxF = max(minF, maxFont(stage) * fontScale.coerceIn(0.5f, 1.5f))
         val comfortable = max(minF, maxF * 0.42f)
         val options = template.rowOptions(line).ifEmpty { listOf(1) }
 
