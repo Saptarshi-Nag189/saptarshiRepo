@@ -64,19 +64,21 @@ them. That splits the `LyricTemplate.draw` from the original brief into pure mot
 
 | Phase | Status |
 |---|---|
-| 1 Plumbing | Written. Not yet built on a device. |
-| 2 Clock | Written; core clock unit tested. |
-| 3 Lyrics | Written; parser, estimator, LRCLIB client unit tested (mock server). |
-| 4 Stage v1 | Written. |
-| 5 Templates, chooser, FitEngine, FitCheck | Written; JVM FitCheck: 0 failures. |
-| 6 Background | Written. |
-| 7 Controls and settings | Written. |
-| 8 Polish | Reduce motion, empty states, gap dots written. Perf pass needs a device. |
+| 1 Plumbing | Builds. Needs a device run. |
+| 2 Clock | Builds; clock unit tested. |
+| 3 Lyrics | Builds; parser, estimator, LRCLIB client unit tested (mock server). |
+| 4 Stage v1 | Builds. |
+| 5 Templates, chooser, FitEngine, FitCheck | Builds; JVM FitCheck: 0 failures. |
+| 6 Background | Builds. |
+| 7 Controls and settings | Builds. |
+| 8 Polish | Reduce motion, empty states, gap dots in. Perf pass needs a device. |
 
-The first build was done in an environment that could not reach Google's Maven
-repository or the Android SDK, so `assembleDebug` has not run yet. The app sources were
-type-checked against the Android API 35 framework jar and Compose 1.7 (desktop), with
-small stubs for AndroidX libraries. Expect a short round of fixes on first real build.
+## CI
+
+`.github/workflows/android.yml` runs on every push: core tests, `assembleDebug`, and
+lint (errors fail the build). The debug APK is attached to each run as the
+`lyricstage-debug-apk` artifact: open the run on GitHub, scroll to Artifacts, download,
+unzip, install.
 
 ## Credits
 
