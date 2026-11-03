@@ -24,7 +24,7 @@ object Rules {
         "${P}CALL_PHONE" to PermRule(MEDIUM, "Can place phone calls without your confirmation."),
         "${P}ANSWER_PHONE_CALLS" to PermRule(MEDIUM, "Can answer or end phone calls."),
         "${P}SYSTEM_ALERT_WINDOW" to PermRule(HIGH, "Can draw over other apps. Used by trojans to show fake login screens."),
-        "${P}REQUEST_INSTALL_PACKAGES" to PermRule(MEDIUM, "Can ask to install other apps. Typical of droppers."),
+        "${P}REQUEST_INSTALL_PACKAGES" to PermRule(HIGH, "Can ask to install other apps. Typical of droppers."),
         "${P}INSTALL_PACKAGES" to PermRule(MEDIUM, "Requests silent install rights (system-only). Suspicious in a downloaded app."),
         "${P}DELETE_PACKAGES" to PermRule(MEDIUM, "Requests silent uninstall rights (system-only)."),
         "${P}MANAGE_EXTERNAL_STORAGE" to PermRule(HIGH, "Full access to all files on shared storage."),
@@ -73,7 +73,12 @@ object Rules {
         "android.intent.action.PACKAGE_ADDED" to PermRule(LOW, "Watches when other apps are installed."),
     )
 
-    /** DEX string rules. Fires when any [anyOf] token is present and all [allOf] tokens are present. */
+    /**
+     * DEX rules. Fires when any [anyOf] token is present and all [allOf] tokens are present.
+     * Token kinds: "Lpkg/Type;" = a referenced type, "#text" = an exact string literal,
+     * anything else = a referenced method name. With [substring], tokens are matched inside
+     * string literals instead (URLs, shell commands).
+     */
     class CodeRule(
         val id: String,
         val severity: Severity,
@@ -84,13 +89,19 @@ object Rules {
         val substring: Boolean = false,
     )
 
+    /**
+     * Substring tokens are stored reversed so this app's own DEX never contains them verbatim;
+     * otherwise APK Guard would flag itself when scanning its own APK.
+     */
+    private fun hidden(vararg reversed: String): List<String> = reversed.map { it.reversed() }
+
     val code: List<CodeRule> = listOf(
         CodeRule("sms_send", HIGH, "Code sends SMS messages", "Uses SmsManager send APIs. Common in premium-SMS fraud and OTP theft.",
             listOf("sendTextMessage", "sendMultipartTextMessage", "sendDataMessage"), listOf("Landroid/telephony/SmsManager;")),
         CodeRule("sms_read_incoming", HIGH, "Code parses incoming SMS", "Decodes raw SMS PDUs, typically to steal OTP codes.",
             listOf("createFromPdu"), listOf("Landroid/telephony/SmsMessage;")),
-        CodeRule("sms_db", HIGH, "Code reads the SMS database", "Queries content://sms directly.", listOf("content://sms"), substring = true),
-        CodeRule("call_log_db", MEDIUM, "Code reads the call log", "Queries content://call_log directly.", listOf("content://call_log"), substring = true),
+        CodeRule("sms_db", HIGH, "Code reads the SMS database", "Reads the phone's SMS store directly.", hidden("sms//:tnetnoc"), substring = true),
+        CodeRule("call_log_db", MEDIUM, "Code reads the call log", "Reads the phone's call history store directly.", hidden("gol_llac//:tnetnoc"), substring = true),
         CodeRule("abort_broadcast", MEDIUM, "Code can suppress broadcasts", "abortBroadcast can hide incoming SMS from the user on older Android versions.",
             listOf("abortBroadcast")),
         CodeRule("a11y_gesture", HIGH, "Code performs automated taps via Accessibility", "dispatchGesture lets an app click buttons on your behalf (e.g. approve transfers).",
@@ -119,26 +130,26 @@ object Rules {
             listOf("Landroid/content/pm/PackageInstaller\$Session;")),
         CodeRule("app_list", LOW, "Enumerates installed apps", "Lists installed apps, used to find banking targets or for fingerprinting.",
             listOf("getInstalledPackages", "getInstalledApplications")),
-        CodeRule("root_exec", HIGH, "Runs commands as root", "Contains 'su -c' style command strings.",
-            listOf("su -c", "/system/xbin/su -c", "/system/bin/su -c"), substring = true),
+        CodeRule("root_exec", HIGH, "Runs commands as root", "Contains shell commands that run through the su binary.",
+            hidden("c- us", "c- us/nibx/metsys/", "c- us/nib/metsys/"), substring = true),
         CodeRule("root_su_literal", MEDIUM, "May execute the 'su' binary", "Has a bare \"su\" string together with Runtime.exec. Root apps and some root checks do this.",
-            listOf("su"), listOf("Ljava/lang/Runtime;", "exec")),
+            listOf("#su"), listOf("Ljava/lang/Runtime;", "exec")),
         CodeRule("root_paths", LOW, "References root binaries", "Mentions su paths. Often root detection, sometimes root exploitation.",
-            listOf("/system/xbin/su", "/system/bin/su", "/sbin/su"), substring = true),
-        CodeRule("shell_pm", HIGH, "Runs package-manager shell commands", "Strings like 'pm install' / 'pm uninstall' indicate silent app management.",
-            listOf("pm install", "pm uninstall", "pm disable", "pm hide"), substring = true),
-        CodeRule("shell_chmod", MEDIUM, "Changes file permissions via shell", "chmod 777 is used to make dropped payloads executable.",
-            listOf("chmod 777", "chmod 755 /data"), substring = true),
+            hidden("us/nibx/metsys/", "us/nib/metsys/", "us/nibs/"), substring = true),
+        CodeRule("shell_pm", HIGH, "Runs package-manager shell commands", "Contains package-manager shell commands that install, remove or hide apps without asking.",
+            hidden("llatsni mp", "llatsninu mp", "elbasid mp", "edih mp"), substring = true),
+        CodeRule("shell_chmod", MEDIUM, "Changes file permissions via shell", "Makes files executable from the shell, which is how dropped payloads get started.",
+            hidden("777 domhc", "atad/ 557 domhc"), substring = true),
         CodeRule("c2_telegram", HIGH, "Sends data to a Telegram bot", "Telegram bot API is a popular exfiltration channel for stealers.",
-            listOf("api.telegram.org/bot"), substring = true),
+            hidden("tob/gro.margelet.ipa"), substring = true),
         CodeRule("c2_discord", HIGH, "Sends data to a Discord webhook", "Discord webhooks are a popular exfiltration channel for stealers.",
-            listOf("discord.com/api/webhooks", "discordapp.com/api/webhooks"), substring = true),
+            hidden("skoohbew/ipa/moc.drocsid", "skoohbew/ipa/moc.ppadrocsid"), substring = true),
         CodeRule("c2_tunnel", MEDIUM, "Uses tunnelling or dynamic-DNS hosts", "ngrok/duckdns/no-ip style hosts are common for throwaway command servers.",
-            listOf("ngrok.io", "ngrok-free.app", "duckdns.org", ".no-ip.", "trycloudflare.com", "serveo.net"), substring = true),
+            hidden("oi.korgn", "ppa.eerf-korgn", "gro.sndkcud", ".pi-on.", "moc.eralfduolcyrt", "ten.oevres"), substring = true),
         CodeRule("c2_paste", MEDIUM, "Fetches content from paste sites", "Raw paste URLs are used to hide command-server addresses.",
-            listOf("pastebin.com/raw", "paste.ee/r/", "rentry.co/"), substring = true),
+            hidden("war/moc.nibetsap", "/r/ee.etsap", "/oc.yrtner"), substring = true),
         CodeRule("miner", HIGH, "Contains crypto-mining indicators", "Mining pool protocols or known miner names were found.",
-            listOf("stratum+tcp://", "stratum+ssl://", "xmrig", "coinhive"), substring = true),
+            hidden("//:pct+mutarts", "//:lss+mutarts", "girmx", "evihnioc"), substring = true),
     )
 
     /** Native libraries shipped by commercial packers that encrypt the real code. */

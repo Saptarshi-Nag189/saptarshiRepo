@@ -40,6 +40,43 @@ object DexScanner {
         return Result(count, if (bad > 0) "$bad DEX string offsets are invalid" else null)
     }
 
+    /**
+     * Calls [onType] for every type descriptor in type_ids and [onMethodName] for every method name
+     * in method_ids. These are what the code actually references, unlike plain string literals,
+     * so an app that merely contains the text "sendTextMessage" (like this scanner) is not flagged.
+     */
+    fun scanRefs(dex: ByteArray, onType: (String) -> Unit, onMethodName: (String) -> Unit) {
+        if (!isDex(dex) || dex.size < 0x70) return
+        val strCount = s32(dex, 56)
+        val strOff = s32(dex, 60)
+        if (strCount < 0 || strCount > MAX_STRINGS || strOff < 0 || strOff.toLong() + strCount.toLong() * 4 > dex.size) return
+        fun str(i: Int): String? {
+            if (i < 0 || i >= strCount) return null
+            val off = s32(dex, strOff + i * 4)
+            if (off < 0 || off >= dex.size) return null
+            var p = off
+            var guard = 0
+            while (p < dex.size && (dex[p].toInt() and 0x80) != 0 && guard++ < 5) p++
+            p++
+            val start = p
+            val limit = minOf(dex.size, start + MAX_STRING_BYTES)
+            while (p < limit && dex[p] != 0.toByte()) p++
+            return decodeMutf8(dex, start, p)
+        }
+        val typeCount = s32(dex, 0x40)
+        val typeOff = s32(dex, 0x44)
+        if (typeCount in 0..MAX_STRINGS && typeOff >= 0 && typeOff.toLong() + typeCount.toLong() * 4 <= dex.size) {
+            for (i in 0 until typeCount) str(s32(dex, typeOff + i * 4))?.let(onType)
+        }
+        val methodCount = s32(dex, 0x58)
+        val methodOff = s32(dex, 0x5C)
+        if (methodCount in 0..MAX_STRINGS && methodOff >= 0 && methodOff.toLong() + methodCount.toLong() * 8 <= dex.size) {
+            val names = HashSet<Int>()
+            for (i in 0 until methodCount) names.add(s32(dex, methodOff + i * 8 + 4))
+            for (n in names) str(n)?.let(onMethodName)
+        }
+    }
+
     /** Lenient Modified-UTF-8 decode; invalid sequences become U+FFFD. */
     private fun decodeMutf8(b: ByteArray, start: Int, end: Int): String {
         val sb = StringBuilder(end - start)

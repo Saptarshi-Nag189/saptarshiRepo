@@ -15,11 +15,35 @@ class ApkScanner(
     private val maxManifestBytes: Int = 16 * 1024 * 1024,
     private val maxDexBytes: Int = 128 * 1024 * 1024,
     private val maxMagicProbes: Int = 20_000,
+    private val maxInnerBytes: Long = 1024L * 1024 * 1024,
 ) {
     /** Thrown when the user cancels; checked between expensive steps. */
     class CancelledException : Exception("Scan cancelled")
 
     fun scan(file: File, progress: (String) -> Unit = {}, isCancelled: () -> Boolean = { false }): Report {
+        // Downloads often arrive wrapped (a .zip from GitHub, .xapk/.apks bundles, .tar.gz).
+        // Find the APK inside and scan that instead of the wrapper.
+        val temps = ArrayList<File>()
+        try {
+            progress("Opening file")
+            val u = Containers.unwrap(file, file.absoluteFile.parentFile, maxInnerBytes, temps, isCancelled)
+            val report = scanApk(u.apk, progress, isCancelled)
+            val extra = ArrayList<Finding>()
+            if (u.chain.isNotEmpty()) {
+                extra += Finding(INFO, "Structure", "Scanned the APK inside this archive",
+                    "The file you picked is an archive, so APK Guard opened it and scanned the app inside.", u.chain)
+            }
+            if (u.otherApks.isNotEmpty()) {
+                extra += Finding(INFO, "Structure", "Archive holds more APKs",
+                    "Only the main APK was scanned. Split APKs usually carry resources or native code for one device type.", u.otherApks.take(20))
+            }
+            return report.plus(extra)
+        } finally {
+            temps.forEach { it.delete() }
+        }
+    }
+
+    private fun scanApk(file: File, progress: (String) -> Unit, isCancelled: () -> Boolean): Report {
         val findings = ArrayList<Finding>()
         fun check() { if (isCancelled()) throw CancelledException() }
 
@@ -46,7 +70,9 @@ class ApkScanner(
             val dexEntries = zip.entries.filter { DEX_NAME.matches(it.name) }
             val seen = HashSet<String>()
             val urls = LinkedHashSet<String>()
-            val interest = Rules.code.filter { !it.substring }.flatMap { it.anyOf + it.allOf }.toHashSet()
+            val apiTokens = Rules.code.filter { !it.substring }.flatMap { it.anyOf + it.allOf }
+            val refTokens = apiTokens.filter { !it.startsWith("#") }.toHashSet()
+            val literalTokens = apiTokens.filter { it.startsWith("#") }.associateBy { it.substring(1) }
             val subTokens = Rules.code.filter { it.substring }.flatMap { it.anyOf + it.allOf }.distinct()
             dexEntries.forEachIndexed { i, e ->
                 check()
@@ -62,7 +88,7 @@ class ApkScanner(
                 var n = 0
                 val res = DexScanner.scan(bytes) { s ->
                     if ((++n and 0x3FFF) == 0) check()
-                    if (s in interest) seen.add(s)
+                    literalTokens[s]?.let { seen.add(it) }
                     if (s.length >= 5) {
                         for (t in subTokens) if (s.contains(t)) seen.add(t)
                         if (urls.size < MAX_URLS && (s.contains("http://") || s.contains("https://"))) {
@@ -70,6 +96,8 @@ class ApkScanner(
                         }
                     }
                 }
+                // API rules match real type/method references, not literals (avoids flagging text).
+                DexScanner.scanRefs(bytes, { t -> if (t in refTokens) seen.add(t) }, { m -> if (m in refTokens) seen.add(m) })
                 res.malformed?.let {
                     findings += Finding(MEDIUM, "Code", "Malformed DEX file", "${e.name}: $it")
                 }

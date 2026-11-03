@@ -69,11 +69,14 @@ class ApkScannerTest {
     fun bankingTrojanIsDangerous() {
         val r = scan(listOf(
             "AndroidManifest.xml" to manifest(listOf("INTERNET", "SYSTEM_ALERT_WINDOW", "RECEIVE_SMS", "QUERY_ALL_PACKAGES"), launcher = false, a11y = true),
-            "classes.dex" to TestApks.dex(listOf(
-                "Landroid/telephony/SmsManager;", "sendTextMessage", "dispatchGesture",
-                "https://api.telegram.org/bot123:abc/sendMessage", "http://45.13.2.9/gate.php",
-                "Ldalvik/system/InMemoryDexClassLoader;",
-            )),
+            "classes.dex" to TestApks.dex(
+                strings = listOf("https://api.telegram.org/bot123:abc/sendMessage", "http://45.13.2.9/gate.php"),
+                types = listOf("Ldalvik/system/InMemoryDexClassLoader;"),
+                methods = listOf(
+                    "Landroid/telephony/SmsManager;" to "sendTextMessage",
+                    "Lcom/evil/Spy;" to "dispatchGesture",
+                ),
+            ),
             "assets/logo.png" to TestApks.dex(listOf("Lhidden/Payload;")),
         ))
         assertEquals(Verdict.DANGEROUS, r.verdict)
@@ -94,6 +97,30 @@ class ApkScannerTest {
             "classes.dex" to TestApks.dex(listOf("sendTextMessage")),
         ))
         assertFalse("Code sends SMS messages" in r.titles())
+    }
+
+    @Test
+    fun apiNamesAsPlainTextDoNotFire() {
+        // A scanner (or a security article) that merely mentions API names must not be flagged.
+        val r = scan(listOf(
+            "AndroidManifest.xml" to manifest(listOf()),
+            "classes.dex" to TestApks.dex(Rules.code.filter { !it.substring }.flatMap { it.anyOf + it.allOf }.map { it.removePrefix("#") }),
+        ))
+        val code = r.findings.filter { it.category == "Code" }
+        assertTrue(code.isEmpty(), code.map { it.title }.toString())
+    }
+
+    @Test
+    fun ownCompiledRulesDoNotContainSubstringTokens() {
+        // Guards against APK Guard flagging itself: decoded tokens must not appear in its bytecode.
+        val tokens = Rules.code.filter { it.substring }.flatMap { it.anyOf + it.allOf }
+        val classes = File(Rules::class.java.protectionDomain.codeSource.location.toURI())
+            .walk().filter { it.isFile && it.name.endsWith(".class") }.toList()
+        assertTrue(classes.isNotEmpty())
+        for (c in classes) {
+            val text = String(c.readBytes(), Charsets.ISO_8859_1)
+            for (t in tokens) assertFalse(text.contains(t), "${c.name} contains '$t' verbatim")
+        }
     }
 
     @Test
@@ -183,6 +210,81 @@ class ApkScannerTest {
         val r = ApkScanner(maxDexBytes = 8 * 1024 * 1024).scan(f)
         assertTrue("Extreme compression ratio (zip bomb pattern)" in r.titles(), r.titles().toString())
         f.delete()
+    }
+
+    private fun innerApk(): ByteArray {
+        val f = File(tmp, "inner-src.apk")
+        TestApks.zip(f, listOf(
+            "AndroidManifest.xml" to manifest(listOf("INTERNET")),
+            "classes.dex" to TestApks.dex(listOf("Lcom/example/Main;")),
+        ))
+        return f.readBytes().also { f.delete() }
+    }
+
+    private fun assertScannedInner(r: Report) {
+        assertEquals("com.example.test", r.info.packageName, r.toText(null))
+        assertTrue("Scanned the APK inside this archive" in r.titles(), r.titles().toString())
+        assertFalse("Manifest missing or unreadable" in r.titles())
+        assertTrue(tmp.listFiles()!!.none { it.name.startsWith("inner-") && it.name != "inner.apk" }, "temp file not cleaned up")
+    }
+
+    @Test
+    fun scansApkInsideZipWrapper() {
+        val r = scan(listOf("app-release.apk" to innerApk()))
+        assertScannedInner(r)
+        assertEquals(Verdict.LOW_RISK, r.verdict, r.toText(null))
+    }
+
+    @Test
+    fun prefersBaseApkInSplitBundle() {
+        val r = scan(listOf(
+            "config.arm64_v8a.apk" to ByteArray(5000) { 1 },
+            "base.apk" to innerApk(),
+            "manifest.json" to "{}".toByteArray(),
+        ))
+        assertScannedInner(r)
+        assertTrue("Archive holds more APKs" in r.titles())
+    }
+
+    @Test
+    fun scansApkInsideTarGzAndNestedZip() {
+        val zipF = File(tmp, "w${Random.nextInt()}.zip")
+        TestApks.zip(zipF, listOf("app.apk" to innerApk()))
+        val tar = java.io.ByteArrayOutputStream()
+        fun header(name: String, size: Int): ByteArray {
+            val h = ByteArray(512)
+            name.toByteArray().copyInto(h)
+            "0000644\u0000".toByteArray().copyInto(h, 100)
+            String.format("%011o\u0000", size).toByteArray().copyInto(h, 124)
+            h[156] = '0'.code.toByte()
+            "ustar\u000000".toByteArray().copyInto(h, 257)
+            "        ".toByteArray().copyInto(h, 148)
+            val sum = h.sumOf { it.toInt() and 0xFF }
+            String.format("%06o\u0000 ", sum).toByteArray().copyInto(h, 148)
+            return h
+        }
+        val body = zipF.readBytes()
+        tar.write(header("readme.txt", 2)); tar.write("hi".toByteArray()); tar.write(ByteArray(510))
+        tar.write(header("dist/bundle.zip", body.size)); tar.write(body); tar.write(ByteArray((512 - body.size % 512) % 512))
+        tar.write(ByteArray(1024))
+        val f = File(tmp, "w.tar.gz")
+        java.util.zip.GZIPOutputStream(f.outputStream()).use { it.write(tar.toByteArray()) }
+        val r = ApkScanner().scan(f)
+        assertScannedInner(r)
+        val chain = r.findings.first { it.title == "Scanned the APK inside this archive" }.evidence
+        assertEquals(listOf("gzip", "dist/bundle.zip", "app.apk"), chain)
+    }
+
+    @Test
+    fun rarIsReportedAsUnsupported() {
+        val f = File(tmp, "x.rar")
+        f.writeBytes(byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00) + ByteArray(100))
+        try {
+            ApkScanner().scan(f)
+            fail("expected UnsupportedArchiveException")
+        } catch (e: Containers.UnsupportedArchiveException) {
+            assertEquals("RAR", e.format)
+        }
     }
 
     @Test

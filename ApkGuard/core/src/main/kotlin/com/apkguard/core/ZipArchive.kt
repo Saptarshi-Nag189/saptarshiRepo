@@ -3,6 +3,7 @@ package com.apkguard.core
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.File
+import java.io.OutputStream
 import java.io.RandomAccessFile
 import java.util.zip.DataFormatException
 import java.util.zip.Inflater
@@ -62,32 +63,48 @@ class ZipArchive private constructor(
      * Never inflates past [maxBytes], so zip bombs cannot exhaust memory.
      */
     fun readEntry(entry: ZipEntryInfo, maxBytes: Int): ByteArray {
+        val out = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        copyEntry(entry, out, maxBytes.toLong())
+        return out.toByteArray()
+    }
+
+    /** Streams up to [maxBytes] of the entry's uncompressed data into [out]; returns bytes written. */
+    fun copyEntry(entry: ZipEntryInfo, out: OutputStream, maxBytes: Long): Long {
         val local = readLocalHeader(entry)
         val dataOffset = local.dataOffset
         if (dataOffset < 0 || dataOffset > fileLength) throw ZipFormatException("Bad data offset for ${entry.name}")
         // Android only honours STORED/DEFLATED from the central directory.
         return when (entry.method) {
             METHOD_STORED -> {
-                val len = minOf(maxOf(entry.uncompressedSize, entry.compressedSize), maxBytes.toLong(), fileLength - dataOffset).toInt()
-                readBytesAt(dataOffset, len)
+                val len = minOf(maxOf(entry.uncompressedSize, entry.compressedSize), maxBytes, fileLength - dataOffset)
+                val buf = ByteArray(64 * 1024)
+                var done = 0L
+                raf.seek(dataOffset)
+                while (done < len) {
+                    val n = minOf(buf.size.toLong(), len - done).toInt()
+                    raf.readFully(buf, 0, n)
+                    out.write(buf, 0, n)
+                    done += n
+                }
+                done
             }
-            METHOD_DEFLATED -> inflate(dataOffset, entry.compressedSize, maxBytes)
+            METHOD_DEFLATED -> inflate(dataOffset, entry.compressedSize, out, maxBytes)
             else -> throw ZipFormatException("Unsupported compression method ${entry.method} for ${entry.name}")
         }
     }
 
-    private fun inflate(offset: Long, compressedSize: Long, maxBytes: Int): ByteArray {
+    private fun inflate(offset: Long, compressedSize: Long, out: OutputStream, maxBytes: Long): Long {
         val available = minOf(compressedSize, fileLength - offset)
         if (available < 0) throw ZipFormatException("Bad compressed size")
         val inflater = Inflater(true)
-        val out = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
         val inBuf = ByteArray(64 * 1024)
         val outBuf = ByteArray(64 * 1024)
+        var written = 0L
         try {
             var pos = offset
             val end = offset + available
             raf.seek(pos)
-            while (out.size() < maxBytes && !inflater.finished()) {
+            while (written < maxBytes && !inflater.finished()) {
                 if (inflater.needsInput()) {
                     if (pos >= end) break
                     val n = minOf(inBuf.size.toLong(), end - pos).toInt()
@@ -96,18 +113,19 @@ class ZipArchive private constructor(
                     inflater.setInput(inBuf, 0, n)
                 }
                 val produced = try {
-                    inflater.inflate(outBuf, 0, minOf(outBuf.size, maxBytes - out.size()))
+                    inflater.inflate(outBuf, 0, minOf(outBuf.size.toLong(), maxBytes - written).toInt())
                 } catch (e: DataFormatException) {
                     throw ZipFormatException("Corrupt deflate stream")
                 }
                 if (produced == 0 && inflater.needsDictionary()) throw ZipFormatException("Deflate dictionary not supported")
                 if (produced == 0 && inflater.needsInput() && pos >= end) break
                 out.write(outBuf, 0, produced)
+                written += produced
             }
         } finally {
             inflater.end()
         }
-        return out.toByteArray()
+        return written
     }
 
     override fun close() = raf.close()

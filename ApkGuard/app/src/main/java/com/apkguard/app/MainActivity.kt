@@ -130,6 +130,8 @@ class MainActivity : Activity() {
                 post { showReport(full, displayName, sha) }
             } catch (e: ApkScanner.CancelledException) {
                 post { showMessage("Scan cancelled.") }
+            } catch (e: com.apkguard.core.Containers.UnsupportedArchiveException) {
+                post { showMessage(e.message ?: "Unsupported archive.") }
             } catch (e: ZipFormatException) {
                 post { showMessage("Not a valid APK: ${e.message}\n\nA file that claims to be an APK but isn't a valid archive is itself suspicious.") }
             } catch (e: TooLargeException) {

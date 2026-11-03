@@ -81,15 +81,21 @@ object TestApks {
         return out.array()
     }
 
-    /** Minimal DEX: header + string_ids + string data. Enough for the string scanner. */
-    fun dex(strings: List<String>): ByteArray {
-        val sorted = strings.distinct().sorted()
+    /**
+     * Minimal DEX: header, string_ids, type_ids, method_ids and string data. Enough for the scanner.
+     * [types] are type descriptors the code references; [methods] are (class descriptor, method name).
+     */
+    fun dex(strings: List<String>, types: List<String> = emptyList(), methods: List<Pair<String, String>> = emptyList()): ByteArray {
+        val all = (strings + types + methods.flatMap { listOf(it.first, it.second) }).distinct().sorted()
+        val typeList = (types + methods.map { it.first }).distinct().sorted()
         val header = 0x70
         val idsOff = header
-        val dataStart = idsOff + sorted.size * 4
+        val typeOff = idsOff + all.size * 4
+        val methodOff = typeOff + typeList.size * 4
+        val dataStart = methodOff + methods.size * 8
         val data = ByteArrayOutputStream()
         val offs = ArrayList<Int>()
-        for (s in sorted) {
+        for (s in all) {
             offs.add(dataStart + data.size())
             require(s.length < 128)
             data.write(s.length); data.write(s.toByteArray(Charsets.UTF_8)); data.write(0)
@@ -97,8 +103,12 @@ object TestApks {
         val b = ByteBuffer.allocate(dataStart + data.size()).order(ByteOrder.LITTLE_ENDIAN)
         b.put("dex\n035\u0000".toByteArray(Charsets.US_ASCII))
         b.position(32); b.putInt(b.capacity()); b.putInt(header); b.putInt(0x12345678)
-        b.position(56); b.putInt(sorted.size); b.putInt(idsOff)
+        b.position(56); b.putInt(all.size); b.putInt(idsOff)
+        b.position(0x40); b.putInt(typeList.size); b.putInt(typeOff)
+        b.position(0x58); b.putInt(methods.size); b.putInt(methodOff)
         b.position(idsOff); offs.forEach { b.putInt(it) }
+        typeList.forEach { b.putInt(all.indexOf(it)) }
+        methods.forEach { (c, n) -> b.putShort(typeList.indexOf(c).toShort()); b.putShort(0); b.putInt(all.indexOf(n)) }
         b.put(data.toByteArray())
         return b.array()
     }
