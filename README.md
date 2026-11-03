@@ -80,6 +80,17 @@ lint (errors fail the build). The debug APK is attached to each run as the
 `lyricstage-debug-apk` artifact: open the run on GitHub, scroll to Artifacts, download,
 unzip, install.
 
+## Releases
+
+Bump `VERSION` (and add a section to `CHANGELOG.md`), push, and
+`.github/workflows/lyricstage-release.yml` builds a release APK and publishes it as a GitHub
+Release tagged `lyricstage-vX.Y.Z`, with `SHA256SUMS.txt` and the changelog as notes.
+
+Signing uses these repository secrets when present: `LYRICSTAGE_KEYSTORE_BASE64`,
+`LYRICSTAGE_KEYSTORE_PASSWORD`, `LYRICSTAGE_KEY_ALIAS`, `LYRICSTAGE_KEY_PASSWORD`.
+Without them it signs with a throwaway key, so each release must be installed fresh
+(uninstall the previous one first).
+
 ## Credits
 
 See `ref/CREDITS.md`. Design ideas ported from LyricalStudio (MIT). Fonts under OFL.

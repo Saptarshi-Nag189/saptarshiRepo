@@ -7,6 +7,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// VERSION at the repository root drives versionName and versionCode (1.2.3 -> 10203).
+val appVersion = rootProject.file("VERSION").readText().trim()
+val appVersionCode = appVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
+
 android {
     namespace = "com.lyricstage"
     compileSdk = 36
@@ -15,14 +19,31 @@ android {
         applicationId = "com.lyricstage"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersion
+    }
+
+    // Release signing comes from environment variables so no key is ever committed.
+    val ksPath = System.getenv("LYRICSTAGE_KEYSTORE")
+    signingConfigs {
+        if (ksPath != null) {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("LYRICSTAGE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("LYRICSTAGE_KEY_ALIAS")
+                keyPassword = System.getenv("LYRICSTAGE_KEY_PASSWORD")
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            // Without a release key, fall back to the debug key so the build is still installable.
+            signingConfig = signingConfigs.getByName(if (ksPath != null) "release" else "debug")
         }
     }
 
